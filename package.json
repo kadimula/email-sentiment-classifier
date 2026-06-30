@@ -1,0 +1,17 @@
+{
+  "name": "test-trigger",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "trigger.dev": "^4.0.0",
+    "typescript": "^5.9.3"
+  }
+}
