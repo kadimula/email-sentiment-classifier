@@ -1,37 +1,23 @@
-# test_trigger
+# Hello World - Deploy an Agent to Prod via Trigger.dev
 
-Minimal [Trigger.dev](https://trigger.dev) v4 project — a single "hello world" background task.
+A hello world [Trigger.dev](https://trigger.dev) project. Create a single background task, which echos the name you provide.
 
 ## Layout
 
 ```
-trigger.config.ts        # project ref + config (maxDuration required in v4)
-src/trigger/hello-world.ts  # the task: id "hello-world", payload { name?: string }
+trigger.config.ts        # project ref + config. This links the repo to the project you create in your trigger.dev account
+src/trigger/hello-world.ts  # the hello world task
 ```
-
-- Project ref: `proj_uphevngxyzoefqcwqzzb`
-- SDK/CLI: `@trigger.dev/sdk` + `trigger.dev` v4 (import from `@trigger.dev/sdk`, NOT `/v3`)
 
 ## Commands
 
-```bash
-npm install
-npx trigger.dev@latest dev      # local dev server, hot-reloads src/trigger/
-npx trigger.dev@latest deploy   # ship to prod (remote build, new immutable version)
-npx tsc --noEmit                # typecheck
-```
+Simply asking claude to "run dev server" should spin up a server on your local to test the task.
+Asking claide to "deploy to prod", will run the command to push your changes to a production task in trigger.dev.
 
-## Triggering
 
-```ts
-import { tasks } from "@trigger.dev/sdk";
-await tasks.trigger("hello-world", { name: "Kishore" });
-// needs TRIGGER_SECRET_KEY (tr_dev_… locally, tr_prod_… in prod)
-```
+## API Keys
 
-Or use the dashboard Test tab.
+Ensure to add your trigger development and production API keys to a .env file
 
-## Notes
 
-- Env vars for prod must be set in the dashboard (Environment Variables → Production); local `.env` is dev-only and not uploaded.
-- Each `deploy` creates a new version; in-flight runs finish on their original version.
+## Accompanying Video
