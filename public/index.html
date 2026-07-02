@@ -10,7 +10,8 @@
     .topbar label { font-size: 0.8rem; color: #666; margin-right: 6px; }
     .topbar select { padding: 6px 8px; font-size: 0.9rem; border: 1px solid #ccc; border-radius: 6px; }
     h1 { font-size: 1.25rem; }
-    form { display: flex; gap: 8px; margin-top: 16px; }
+    form { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .row { display: flex; gap: 8px; }
     input { flex: 1; padding: 10px 12px; font-size: 1rem; border: 1px solid #ccc; border-radius: 6px; }
     button { padding: 10px 16px; font-size: 1rem; border: 0; border-radius: 6px; background: #6366f1; color: #fff; cursor: pointer; }
     button:disabled { opacity: 0.5; cursor: default; }
@@ -29,13 +30,17 @@
   <h1>Trigger the <code>hello-world</code> task</h1>
   <form id="form">
     <input id="name" type="text" placeholder="Enter a name" autocomplete="off" />
-    <button id="btn" type="submit">Trigger</button>
+    <div class="row">
+      <input id="email" type="email" placeholder="Enter an email" autocomplete="off" required />
+      <button id="btn" type="submit">Trigger</button>
+    </div>
   </form>
   <pre id="out">Type a name and click Trigger.</pre>
 
   <script>
     const form = document.getElementById("form");
     const nameInput = document.getElementById("name");
+    const emailInput = document.getElementById("email");
     const envSelect = document.getElementById("env");
     const btn = document.getElementById("btn");
     const out = document.getElementById("out");
@@ -48,7 +53,7 @@
         const res = await fetch("/trigger", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: nameInput.value, env: envSelect.value }),
+          body: JSON.stringify({ name: nameInput.value, email: emailInput.value, env: envSelect.value }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.statusText);

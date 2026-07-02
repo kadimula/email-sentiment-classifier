@@ -7,7 +7,8 @@
     "start": "node --env-file-if-exists=.env server.js"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "^4.0.0"
+    "@trigger.dev/sdk": "^4.0.0",
+    "resend": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

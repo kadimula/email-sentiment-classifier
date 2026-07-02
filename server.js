@@ -37,14 +37,20 @@ const server = createServer(async (req, res) => {
     req.on("data", (chunk) => (body += chunk));
     req.on("end", async () => {
       try {
-        const { name, env = "prod" } = body ? JSON.parse(body) : {};
+        const { name, email, env = "prod" } = body ? JSON.parse(body) : {};
+        if (!email) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "An email address is required" }));
+          return;
+        }
         const secretKey = KEYS[env];
         if (!secretKey) throw new Error(`No secret key configured for "${env}"`);
-        // "hello-world" matches the task id in src/trigger/hello-world.ts.
-        // withAuth picks the dev/prod key for this single request.
-        const handle = await auth.withAuth({ secretKey }, () =>
-          tasks.trigger("hello-world", { name })
-        );
+        // Task ids match src/trigger/*.ts. withAuth picks the dev/prod key for
+        // this single request. Keep the greeting run and also email the user.
+        const handle = await auth.withAuth({ secretKey }, async () => {
+          await tasks.trigger("hello-world", { name });
+          return tasks.trigger("send-email", { to: email, name });
+        });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ...handle, env }));
       } catch (err) {
