@@ -9,19 +9,18 @@ import { logger } from "@trigger.dev/sdk";
 export const SENTIMENTS = ["happy", "neutral", "angry"] as const;
 export type Sentiment = (typeof SENTIMENTS)[number];
 
-// Azure OpenAI resource (caffine-openai, eastus) via its OpenAI-compatible v1
-// endpoint. Runs on the existing gpt-4.1 deployment so usage bills as
-// first-party Azure consumption (covered by Azure credits), not Marketplace.
-const AZURE_OPENAI_ENDPOINT =
-  process.env.AZURE_OPENAI_ENDPOINT?.trim() ??
-  "https://caffine-openai.openai.azure.com/openai/v1";
+// Azure OpenAI resource via its OpenAI-compatible v1 endpoint, e.g.
+// https://<resource>.openai.azure.com/openai/v1. Runs on a gpt-4.1 deployment
+// so usage bills as first-party Azure consumption (covered by Azure credits),
+// not Marketplace.
+const AZURE_OPENAI_ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT?.trim();
 const AZURE_OPENAI_DEPLOYMENT =
   process.env.AZURE_OPENAI_DEPLOYMENT?.trim() ?? "gpt-4.1";
 
 // Lazy singleton (mirrors getComposio): constructing the client at module load
 // with a missing key would crash every task import in the bundle — not just
-// the poll that needs it. Set AZURE_OPENAI_API_KEY in the Trigger.dev
-// dashboard alongside WATCH_SENDER / TARGET_SHEET_ID.
+// the poll that needs it. Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
+// in the Trigger.dev dashboard alongside WATCH_SENDER / TARGET_SHEET_ID.
 let _openai: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
@@ -29,6 +28,9 @@ function getOpenAI(): OpenAI {
   const apiKey = process.env.AZURE_OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("AZURE_OPENAI_API_KEY is not set");
+  }
+  if (!AZURE_OPENAI_ENDPOINT) {
+    throw new Error("AZURE_OPENAI_ENDPOINT is not set");
   }
   _openai = new OpenAI({ apiKey, baseURL: AZURE_OPENAI_ENDPOINT });
   return _openai;
