@@ -30,8 +30,8 @@ the human-facing walkthrough.
   re-onboard (`/refresh` skill).
 - Composio's raw `GMAIL_FETCH_EMAILS` response is ~70KB **per email**; it never
   leaves `composio.ts` (trimmed to `EmailSummary`). Don't log it whole.
-- Sentiment runs on Azure OpenAI (`gpt-4.1` deployment via the
-  OpenAI-compatible v1 endpoint; `AZURE_OPENAI_*` env vars). Failures degrade
+- Sentiment runs on Claude via the official Anthropic SDK (`claude-opus-4-8`
+  default; `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` env vars). Failures degrade
   to `neutral` — never let sentiment block the sheet write.
 - In DEV, triggered runs execute only while `npm run dev` is connected.
 

@@ -18,7 +18,7 @@ the set of Trigger.dev schedules (one per client, tagged `externalId=userId`).
 ```
 trigger.config.ts            # project ref (from env) + Trigger.dev config
 src/lib/composio.ts          # all Gmail + Sheets auth + tooling, via Composio
-src/lib/sentiment.ts         # per-email sentiment (Azure OpenAI, gpt-4.1)
+src/lib/sentiment.ts         # per-email sentiment (Claude, via the Anthropic SDK)
 src/trigger/clients.ts       # lifecycle tasks: connect Gmail/Sheets, onboard, offboard
 src/trigger/poll-inbox.ts    # the per-client poll-inbox schedule task
 scripts/cli.ts               # CLI: connect | onboard | offboard | reschedule
@@ -75,15 +75,15 @@ header row by hand once):
 
 | date | from | subject | snippet | messageId | threadId | sentiment |
 
-`sentiment` is `happy`, `neutral`, or `angry`, classified by Azure OpenAI
-(`gpt-4.1` deployment). Any classification failure degrades to `neutral`
-rather than blocking the row.
+`sentiment` is `happy`, `neutral`, or `angry`, classified by Claude
+(`claude-opus-4-8` by default; override via `ANTHROPIC_MODEL`). Any
+classification failure degrades to `neutral` rather than blocking the row.
 
 ## Deploying
 
 Set `TRIGGER_PROJECT_REF` and your `TRIGGER_SECRET_KEY_*` in `.env`, then
 `npm run deploy`. Remember env vars (`WATCH_SENDER`, `TARGET_SHEET_ID`,
-`COMPOSIO_API_KEY`, `AZURE_OPENAI_API_KEY`) are per-environment — set them in
+`COMPOSIO_API_KEY`, `ANTHROPIC_API_KEY`) are per-environment — set them in
 the Trigger.dev dashboard for the deployed environment.
 
 ## API keys
