@@ -4,15 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --env-file-if-exists=.env server.js"
+    "dev": "trigger dev",
+    "deploy": "trigger deploy",
+    "connect": "node --env-file=.env --import tsx scripts/connect.ts",
+    "onboard": "node --env-file=.env --import tsx scripts/onboard.ts"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "^4.0.0",
-    "resend": "^4.0.0"
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@composio/core": "^0.13.1",
+    "@trigger.dev/sdk": "4.5.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
-    "trigger.dev": "^4.0.0",
+    "trigger.dev": "4.5.0",
+    "tsx": "^4.22.5",
     "typescript": "^5.9.3"
   }
 }

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gmail → Sheets Agent — Architecture</title>
+<style>
+  :root{
+    --bg:#0c0f14; --panel:#141a22; --panel2:#1b232e; --line:#26313f;
+    --ink:#e7edf5; --muted:#94a3b8; --faint:#64748b;
+    --blue:#4c8dff; --green:#31c48d; --purple:#a879ff; --amber:#f6b13d;
+    --red:#f2647b; --gray:#7d8ba0;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:34px 22px 70px;}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+     margin:38px 0 14px;border-bottom:1px solid var(--line);padding-bottom:7px}
+  .sub{color:var(--muted);margin:0 0 6px;max-width:820px}
+  code{font-family:var(--mono);font-size:.88em}
+  .file{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+  .asof{display:inline-block;margin-top:10px;font-size:12.5px;color:var(--amber);
+    background:rgba(246,177,61,.08);border:1px solid rgba(246,177,61,.25);
+    border-radius:6px;padding:5px 10px;max-width:900px}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin:16px 0 4px;font-size:12.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .dash{width:22px;border-top:2px dashed var(--faint);display:inline-block}
+
+  /* owner bands */
+  .band{border:1px solid var(--line);border-radius:12px;margin:14px 0;overflow:hidden;background:var(--panel)}
+  .band>.hd{font-size:12px;text-transform:uppercase;letter-spacing:.1em;padding:8px 14px;
+    color:#0c0f14;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .band>.hd .m{font-weight:500;text-transform:none;letter-spacing:0;opacity:.85}
+  .band .body{padding:14px;display:flex;flex-wrap:wrap;gap:12px}
+  .b-code>.hd{background:var(--blue)} .b-trig>.hd{background:var(--green)}
+  .b-comp>.hd{background:var(--purple)} .b-goog>.hd{background:var(--amber)}
+  .b-cli>.hd{background:var(--gray)}
+
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+    padding:11px 13px;min-width:210px;flex:1 1 240px}
+  .card h3{margin:0 0 3px;font-size:14.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .card p{margin:6px 0 0;font-size:12.5px;color:var(--muted)}
+  .tag{font-family:var(--mono);font-size:10.5px;background:#0c0f14;border:1px solid var(--line);
+    color:var(--muted);border-radius:5px;padding:1px 6px;font-weight:500}
+  .card.stub{border-style:dashed;border-color:var(--faint);opacity:.92}
+  .pill{font-size:10px;font-weight:700;letter-spacing:.04em;border-radius:20px;padding:1px 8px}
+  .pill.plan{background:rgba(168,121,255,.15);color:var(--purple);border:1px solid rgba(168,121,255,.4)}
+  .pill.ok{background:rgba(49,196,141,.13);color:var(--green);border:1px solid rgba(49,196,141,.35)}
+
+  /* flows */
+  .flow{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .flow h3{margin:0 0 2px;font-size:16px}
+  .flow .meta{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+  .step{display:flex;gap:13px;padding:9px 0;border-top:1px solid var(--line)}
+  .step:first-of-type{border-top:0}
+  .num{flex:0 0 26px;height:26px;border-radius:50%;background:#0c0f14;border:1px solid var(--line);
+    color:var(--ink);font-weight:700;font-size:12.5px;display:flex;align-items:center;justify-content:center}
+  .step .who{flex:0 0 128px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding-top:4px}
+  .w-code{color:var(--blue)} .w-trig{color:var(--green)} .w-comp{color:var(--purple)}
+  .w-goog{color:var(--amber)} .w-cli{color:var(--gray)}
+  .step .txt{flex:1;font-size:13px}
+  .step .txt code{color:#cfe0ff}
+  .step .txt .file{margin-top:2px}
+
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:6px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--muted);font-weight:600}
+  td code{color:#cfe0ff}
+  .yes{color:var(--green)} .no{color:var(--red)} .opt{color:var(--amber)}
+  .foot{margin-top:34px;color:var(--faint);font-size:12px;border-top:1px solid var(--line);padding-top:14px;line-height:1.7}
+  .scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Gmail → Sheets Agent</h1>
+  <p class="sub">A multi-tenant Trigger.dev app: each client links their own Gmail <b>and</b> Google
+  Sheets once (via Composio-hosted OAuth); a per-client cron then polls the inbox, keeps mail from a
+  watched sender, and appends each match as a row to a target sheet. No web server, no database — all
+  state lives in Trigger.dev + Composio.</p>
+  <div class="asof">As of 2026-07-05 · reflects the code on disk right now.</div>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--blue)"></i> Your code (tasks + lib)</span>
+    <span><i class="dot" style="background:var(--green)"></i> Trigger.dev platform</span>
+    <span><i class="dot" style="background:var(--purple)"></i> Composio (OAuth host + token store + tool exec)</span>
+    <span><i class="dot" style="background:var(--amber)"></i> Google (Gmail · Sheets)</span>
+    <span><i class="dot" style="background:var(--gray)"></i> Operator CLI</span>
+    <span><i class="dash"></i> dashed = present but not wired / not built</span>
+  </div>
+
+  <!-- ============ COMPONENTS ============ -->
+  <h2>What runs where</h2>
+
+  <div class="band b-code">
+    <div class="hd">Your code <span class="m">TypeScript · registered by Trigger.dev from <code>./src/trigger</code></span></div>
+    <div class="body">
+      <div class="card">
+        <h3>pollInbox <span class="tag">poll-inbox</span></h3>
+        <div class="file">src/trigger/gmail-agent.ts</div>
+        <p>Imperative <code>schedules.task</code> (no static cron). Fires per onboarded client via
+        <code>payload.externalId=userId</code>: check Gmail status → fetch → <b>filter by WATCH_SENDER</b>
+        → <b>append matches to sheet</b>.</p>
+      </div>
+      <div class="card">
+        <h3>onboardClient <span class="tag">onboard-client</span></h3>
+        <div class="file">src/trigger/gmail-connect.ts</div>
+        <p>Registers the roster entry: <code>schedules.create()</code> (dedup key <code>poll-inbox:userId</code>).
+        Refuses unless <b>both</b> Gmail &amp; Sheets are <code>ACTIVE</code>. Idempotent.</p>
+      </div>
+      <div class="card">
+        <h3>connectClientGmail <span class="tag">connect-client-gmail</span></h3>
+        <div class="file">src/trigger/gmail-connect.ts</div>
+        <p>Starts Gmail OAuth, returns the Composio-hosted consent <code>redirectUrl</code>.</p>
+      </div>
+      <div class="card">
+        <h3>connectClientSheets <span class="tag">connect-client-sheets</span></h3>
+        <div class="file">src/trigger/gmail-connect.ts</div>
+        <p>Same hosted-consent flow for the <b>googlesheets</b> toolkit (separate connection).</p>
+      </div>
+      <div class="card">
+        <h3>offboardClient <span class="tag">offboard-client</span></h3>
+        <div class="file">src/trigger/gmail-connect.ts</div>
+        <p>Walks <code>schedules.list()</code> and deletes this user's poll schedule(s) → stops polling.</p>
+      </div>
+      <div class="card">
+        <h3>composio.ts lib <span class="tag">auth + tools</span></h3>
+        <div class="file">src/lib/composio.ts</div>
+        <p>Singleton client + all Composio calls: <code>ensure*AuthConfig</code>, <code>start*Connection</code>,
+        <code>get*ConnectionStatus</code>, <code>fetchRecentEmails</code>, <code>appendRowsToSheet</code>.
+        Toolkit versions <b>pinned</b> (gmail <code>20260702_01</code>, sheets <code>20260703_00</code>).</p>
+      </div>
+      <div class="card stub">
+        <h3>sendEmail() <span class="pill plan">NOT WIRED</span></h3>
+        <div class="file">src/lib/composio.ts:211</div>
+        <p>Helper to reply as the client (<code>GMAIL_SEND_EMAIL</code>). Exported but <b>called by no task</b>
+        — the reply/agent step isn't built yet.</p>
+      </div>
+      <div class="card stub">
+        <h3>LLM "parse" step <span class="pill plan">NOT BUILT</span></h3>
+        <div class="file">(no file)</div>
+        <p>CLAUDE.md says "parses the email." Today that's a substring match on <code>from</code> + fixed
+        field extraction — <b>no AI/LLM</b> in the loop.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="band b-trig">
+    <div class="hd">Trigger.dev platform <span class="m">runs your tasks · holds the roster &amp; config</span></div>
+    <div class="body">
+      <div class="card">
+        <h3>Schedules = the roster <span class="pill ok">source of truth</span></h3>
+        <p>One imperative schedule per client, tagged <code>externalId=userId</code>. There is <b>no DB</b>;
+        <code>schedules.list()</code> enumerates clients (Composio can't list userIds back).</p>
+      </div>
+      <div class="card">
+        <h3>Environment variables <span class="tag">per env</span></h3>
+        <p>Agent config read via <code>process.env</code> at run time: <code>WATCH_SENDER</code>,
+        <code>TARGET_SHEET_ID</code>, <code>COMPOSIO_API_KEY</code> &amp; pins. Changing a client's target is
+        data, not a redeploy.</p>
+      </div>
+      <div class="card">
+        <h3>trigger.config.ts <span class="tag">config</span></h3>
+        <div class="file">trigger.config.ts</div>
+        <p><code>project</code> from <code>TRIGGER_PROJECT_REF</code>, <code>dirs:["./src/trigger"]</code>,
+        <code>maxDuration:60</code>s. SDK/CLI pinned to <code>4.5.0</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="band b-comp">
+    <div class="hd">Composio <span class="m">app.composio.dev — the only third party the app calls directly</span></div>
+    <div class="body">
+      <div class="card">
+        <h3>Hosted OAuth + token vault</h3>
+        <p>Hosts Google's consent screen &amp; callback; stores + auto-refreshes each client's tokens.
+        Auth configs auto-provisioned per toolkit (find-or-create), pinnable via env.</p>
+      </div>
+      <div class="card">
+        <h3>Gmail toolkit <span class="tag">gmail</span></h3>
+        <p><code>tools.execute("GMAIL_FETCH_EMAILS")</code> → message list + parsed bodies
+        (~70KB/email raw — never logged whole).</p>
+      </div>
+      <div class="card">
+        <h3>Sheets toolkit <span class="tag">googlesheets</span></h3>
+        <p><code>GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND</code> — <code>INSERT_ROWS</code> /
+        <code>USER_ENTERED</code>, appends below existing data. Separate connection from Gmail.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="band b-goog">
+    <div class="hd">Google <span class="m">reached only via Composio — the app never holds Google secrets</span></div>
+    <div class="body">
+      <div class="card"><h3>Gmail API</h3><p>Client's inbox, read on their behalf.</p></div>
+      <div class="card"><h3>Google Sheets API</h3><p>Rows appended to <code>TARGET_SHEET_ID</code>.</p></div>
+      <div class="card"><h3>Google consent screen</h3><p>Where the client actually approves access.</p></div>
+    </div>
+  </div>
+
+  <div class="band b-cli">
+    <div class="hd">Operator CLI <span class="m">local scripts to drive onboarding without the dashboard</span></div>
+    <div class="body">
+      <div class="card">
+        <h3>connect.ts <span class="tag">npm run connect</span></h3>
+        <div class="file">scripts/connect.ts</div>
+        <p>Triggers <code>connect-client-&lt;gmail|sheets&gt;</code>, polls the run, prints the consent URL.
+        <code>--prod</code> switches secret key.</p>
+      </div>
+      <div class="card">
+        <h3>onboard.ts <span class="tag">npm run onboard</span></h3>
+        <div class="file">scripts/onboard.ts</div>
+        <p>Triggers <code>onboard-client</code>; prints <code>gmailStatus</code>/<code>sheetsStatus</code>
+        when not yet ready. Also the "refresh schedule" button.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FLOW 1 ============ -->
+  <h2>Flow ① — Onboard a client (one-time, operator-driven)</h2>
+  <div class="flow">
+    <h3>Link Gmail + Sheets, then register the poll schedule</h3>
+    <p class="meta">Every step keys off a stable <code>userId</code> you choose. Re-run <code>onboard-client</code> until it succeeds — it's idempotent.</p>
+    <div class="step"><div class="num">1</div><div class="who w-cli">Operator</div><div class="txt">
+      <code>npm run connect -- gmail &lt;userId&gt;</code> → triggers <code>connect-client-gmail</code>.
+      <div class="file">scripts/connect.ts → tasks.trigger()</div></div></div>
+    <div class="step"><div class="num">2</div><div class="who w-code">Task</div><div class="txt">
+      <code>startGmailConnection(userId)</code> → Composio <code>connectedAccounts.link</code> → returns a hosted <code>redirectUrl</code>.
+      <div class="file">gmail-connect.ts → composio.ts:112</div></div></div>
+    <div class="step"><div class="num">3</div><div class="who w-goog">Client</div><div class="txt">
+      Opens the URL, approves Gmail on <b>Google's own consent screen</b>. Composio stores &amp; auto-refreshes the tokens.</div></div>
+    <div class="step"><div class="num">4</div><div class="who w-cli">Operator</div><div class="txt">
+      <code>npm run connect -- sheets &lt;userId&gt;</code> → same flow for the <b>googlesheets</b> toolkit (a second, separate connection).</div></div>
+    <div class="step"><div class="num">5</div><div class="who w-code">Task</div><div class="txt">
+      <code>npm run onboard -- &lt;userId&gt;</code> → <code>onboard-client</code> checks Gmail <b>and</b> Sheets status. If either ≠ <code>ACTIVE</code> → returns <code>{onboarded:false, gmailStatus, sheetsStatus}</code> and stops.
+      <div class="file">gmail-connect.ts:85</div></div></div>
+    <div class="step"><div class="num">6</div><div class="who w-trig">Trigger.dev</div><div class="txt">
+      Both ACTIVE → <code>schedules.create({task:"poll-inbox", cron:"*/1 * * * *", externalId:userId, deduplicationKey:"poll-inbox:userId"})</code>. <b>This schedule is the roster entry.</b></div></div>
+  </div>
+
+  <!-- ============ FLOW 2 ============ -->
+  <h2>Flow ② — Poll + write (per client, every minute by default)</h2>
+  <div class="flow">
+    <h3>Read inbox → filter by sender → append matches to the sheet</h3>
+    <p class="meta">Fires once per registered schedule; <code>payload.externalId</code> hands the task the client's <code>userId</code>.</p>
+    <div class="step"><div class="num">1</div><div class="who w-trig">Trigger.dev</div><div class="txt">
+      Cron fires <code>poll-inbox</code> for a client. No <code>externalId</code> → logs error &amp; skips.
+      <div class="file">gmail-agent.ts:59</div></div></div>
+    <div class="step"><div class="num">2</div><div class="who w-comp">Composio</div><div class="txt">
+      <code>getGmailConnectionStatus(userId)</code>. If not <code>ACTIVE</code> (unfinished/revoked) → skip this run.</div></div>
+    <div class="step"><div class="num">3</div><div class="who w-trig">env</div><div class="txt">
+      Read <code>WATCH_SENDER</code> and <code>TARGET_SHEET_ID</code> from <code>process.env</code>.</div></div>
+    <div class="step"><div class="num">4</div><div class="who w-comp">Composio → Google</div><div class="txt">
+      <code>fetchRecentEmails</code> → <code>tools.execute("GMAIL_FETCH_EMAILS", {max_results:10})</code> → Gmail API → raw response.
+      <div class="file">composio.ts:160</div></div></div>
+    <div class="step"><div class="num">5</div><div class="who w-code">Task</div><div class="txt">
+      <code>summarizeEmails()</code> trims each to {from, subject, date, snippet, ids}, then keeps only those whose <code>from</code> contains <code>WATCH_SENDER</code> (blank = keep all).
+      <div class="file">gmail-agent.ts:42,86</div></div></div>
+    <div class="step"><div class="num">6</div><div class="who w-comp">Composio → Google</div><div class="txt">
+      For each match, <code>appendRowsToSheet</code> → <code>GOOGLESHEETS_..._APPEND</code> → appends a row
+      <code>[date, from, subject, snippet, messageId, threadId]</code> below existing data in <code>TARGET_SHEET_ID</code>. Missing sheet id → warn, skip write.
+      <div class="file">gmail-agent.ts:104 · composio.ts:189</div></div></div>
+    <div class="step"><div class="num">7</div><div class="who w-code">Task</div><div class="txt">
+      Returns <code>{userId, total, matched, written, targetSheetId, emails}</code> — visible in the run's Output panel.</div></div>
+  </div>
+
+  <!-- ============ AUTH ============ -->
+  <h2>Auth &amp; trust boundary</h2>
+  <div class="flow">
+    <div class="step"><div class="num">✓</div><div class="who w-code">App holds</div><div class="txt">
+      Only a <b>Composio API key</b> + a <b>Composio <code>userId</code></b> per client. That's the whole footprint.</div></div>
+    <div class="step"><div class="num">✕</div><div class="who w-comp">App never sees</div><div class="txt">
+      Google refresh tokens or client secrets — Composio holds and refreshes them. There is <b>no <code>googleapis</code> dependency</b>. (The <code>GOOGLE_*</code> keys in <code>.env</code> are dead leftovers; see below.)</div></div>
+    <div class="step"><div class="num">2×</div><div class="who w-goog">Per client</div><div class="txt">
+      Two independent grants under one <code>userId</code>: <b>gmail</b> (read) and <b>googlesheets</b> (write). Onboarding blocks until both are ACTIVE.</div></div>
+  </div>
+
+  <!-- ============ ENV ============ -->
+  <h2>Environment variables — wired vs. dead</h2>
+  <p class="sub">Ground truth is what the code reads. Several keys sit in the real <code>.env</code> from an
+  earlier iteration and are referenced by <b>zero</b> source files today.</p>
+  <div class="scroll"><table>
+    <tr><th>Variable</th><th>Status</th><th>Used by</th></tr>
+    <tr><td><code>COMPOSIO_API_KEY</code></td><td class="yes">wired · required</td><td><code>composio.ts</code> — client init</td></tr>
+    <tr><td><code>TRIGGER_PROJECT_REF</code></td><td class="yes">wired · required</td><td><code>trigger.config.ts</code></td></tr>
+    <tr><td><code>TRIGGER_SECRET_KEY_DEV</code> / <code>_PROD</code></td><td class="yes">wired</td><td>CLI scripts — pick env by <code>--prod</code></td></tr>
+    <tr><td><code>WATCH_SENDER</code></td><td class="opt">wired · optional</td><td><code>gmail-agent.ts</code> — blank keeps all</td></tr>
+    <tr><td><code>TARGET_SHEET_ID</code></td><td class="opt">wired · needed to write</td><td><code>gmail-agent.ts</code> — unset ⇒ no sheet write</td></tr>
+    <tr><td><code>COMPOSIO_GMAIL_AUTH_CONFIG_ID</code></td><td class="opt">wired · optional pin</td><td><code>composio.ts</code> — skips find-or-create</td></tr>
+    <tr><td><code>COMPOSIO_GOOGLESHEETS_AUTH_CONFIG_ID</code></td><td class="opt">wired · optional pin</td><td><code>composio.ts</code></td></tr>
+    <tr><td><code>COMPOSIO_GMAIL_TOOLKIT_VERSION</code></td><td class="opt">wired · optional</td><td><code>composio.ts</code> — default <code>20260702_01</code></td></tr>
+    <tr><td><code>COMPOSIO_GOOGLESHEETS_TOOLKIT_VERSION</code></td><td class="opt">wired · optional</td><td><code>composio.ts</code> — default <code>20260703_00</code></td></tr>
+    <tr><td><code>RESEND_API_KEY</code>, <code>EMAIL_FROM</code></td><td class="no">dead</td><td>none — no source reference</td></tr>
+    <tr><td><code>GOOGLE_CLIENT_ID</code> / <code>_SECRET</code> / <code>_REFRESH_TOKEN</code></td><td class="no">dead</td><td>none — Google access is via Composio</td></tr>
+    <tr><td><code>UPSTASH_REDIS_REST_URL</code> / <code>_TOKEN</code></td><td class="no">dead</td><td>none — roster is Trigger.dev schedules</td></tr>
+  </table></div>
+  <p class="sub" style="margin-top:8px;font-size:12.5px">The dead keys live in the real <code>.env</code> but are <b>not</b> in <code>.env.example</code>, which lists only the wired set. Safe to delete from <code>.env</code>.</p>
+
+  <!-- ============ DEV/PROD ============ -->
+  <h2>Dev vs. prod</h2>
+  <p class="sub">The only environment split the code shows is the Trigger.dev secret-key prefix
+  (<code>tr_dev_</code> / <code>tr_prod_</code>), chosen by the <code>--prod</code> flag in the CLI scripts;
+  that decides which Trigger.dev environment a run — and its schedules + env vars — lands in.
+  <code>WATCH_SENDER</code> and <code>TARGET_SHEET_ID</code> are set per Trigger.dev environment from the
+  dashboard. Composio <code>userId</code>s and their connections are <b>not</b> partitioned by Trigger
+  environment — the same linked account is visible from both dev and prod runs, so choose your own userId
+  convention if you want isolation. <code>trigger dev</code> runs the worker locally; <code>trigger deploy</code> ships it.</p>
+
+  <div class="foot">
+    <b>On disk:</b> <code>trigger.config.ts</code> · <code>src/lib/composio.ts</code> ·
+    <code>src/trigger/gmail-connect.ts</code> (connect / onboard / offboard) ·
+    <code>src/trigger/gmail-agent.ts</code> (poll) · <code>scripts/connect.ts</code>, <code>scripts/onboard.ts</code>.
+    Deps: <code>@composio/core</code>, <code>@trigger.dev/sdk 4.5.0</code>. No web server, no database.<br>
+    <b>Doc mismatch:</b> <code>README.md</code> lists <code>src/lib/clients.ts</code>,
+    <code>hello-world.ts</code>, and <code>send-email.ts</code> — these files are not present on disk.
+  </div>
+</div>
+</body>
+</html>
