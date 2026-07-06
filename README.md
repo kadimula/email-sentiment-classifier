@@ -1,31 +1,28 @@
 # Multi-tenant Gmail agent (Trigger.dev + Composio)
 
-A [Trigger.dev](https://trigger.dev) scaffold for an email agent that watches
-your clients' Gmail inboxes. Each client links their own Gmail once; a scheduled
-task then fans out over every connected client and reads their recent mail. The
-agent step (check sender → parse → write to a Google Sheet) slots in where the
-poll task currently logs the inbox.
+A [Trigger.dev](https://trigger.dev) email agent that watches your clients'
+Gmail inboxes. Each client links their own Gmail and Google Sheets once; a
+per-client schedule then polls their inbox, keeps mail from the sender you're
+watching (`WATCH_SENDER`), classifies each match's tone with one LLM call, and
+appends a row per match to a Google Sheet (`TARGET_SHEET_ID`).
 
-**Gmail is handled entirely through [Composio](https://composio.dev).** Composio
-hosts the Google OAuth consent screen, stores and auto-refreshes each client's
-tokens, and exposes Gmail as callable tools. This app never sees a refresh token
-or a Google client secret — it only ever holds a Composio `userId` per client.
-There is no `googleapis` / direct-Google dependency.
+**Gmail and Sheets are handled entirely through [Composio](https://composio.dev).**
+Composio hosts the Google OAuth consent screens, stores and auto-refreshes each
+client's tokens, and exposes Gmail/Sheets as callable tools. This app never
+sees a refresh token or a Google client secret — it only ever holds a Composio
+`userId` per client. There is no web server and no database: the "roster" is
+the set of Trigger.dev schedules (one per client, tagged `externalId=userId`).
 
 ## Layout
 
 ```
 trigger.config.ts            # project ref (from env) + Trigger.dev config
 src/lib/composio.ts          # all Gmail + Sheets auth + tooling, via Composio
-src/lib/clients.ts           # roster of connected clients (Upstash or in-memory)
-src/trigger/gmail-connect.ts # onboarding tasks: connect Gmail + Sheets, onboard/offboard
-src/trigger/gmail-agent.ts   # cron scheduler + per-client inbox worker
-src/trigger/hello-world.ts   # demo task
-src/trigger/send-email.ts    # demo task (Resend)
+src/lib/sentiment.ts         # per-email sentiment (Azure OpenAI, gpt-4.1)
+src/trigger/clients.ts       # lifecycle tasks: connect Gmail/Sheets, onboard, offboard
+src/trigger/poll-inbox.ts    # the per-client poll-inbox schedule task
+scripts/cli.ts               # CLI: connect | onboard | offboard | reschedule
 ```
-
-There is no web server. Onboarding and polling both run entirely as Trigger.dev
-tasks; Composio hosts the OAuth consent page and callback.
 
 ## Setup
 
@@ -33,46 +30,61 @@ tasks; Composio hosts the OAuth consent page and callback.
 2. Copy env: `cp .env.example .env`, then fill it in. At minimum you need
    `COMPOSIO_API_KEY` and `TRIGGER_PROJECT_REF`; see `.env.example` for the rest
    and what each is for.
-3. Run the task dev server (registers tasks + runs the cron):
-   `npx trigger.dev@latest dev`
+3. Run the task dev server (registers tasks + executes runs): `npm run dev`
+
+> The Trigger.dev SDK and CLI are exact-pinned at the same version
+> (see `package.json`) — a mismatch aborts `dev`. Always use the npm scripts,
+> never `npx trigger.dev@latest`.
 
 ## Connecting a client (Gmail + Sheets)
 
-Onboarding is a Trigger.dev task — no web server. A client needs two Composio
-connections under the same `userId`: **Gmail** (to read their inbox) and
-**Google Sheets** (to write matched emails). From the Trigger.dev dashboard
-(or via the SDK), run each connect task with a stable identifier for the client
-as `userId` (their id in your system, or their email):
-
-```json
-{ "userId": "client-123" }
-```
-
-1. **`connect-client-gmail`** → the run's Output panel returns a Composio-hosted
-   `redirectUrl`; open it and approve Gmail on Google's own consent screen.
-2. **`connect-client-sheets`** → same, for Google Sheets write access.
-3. **`onboard-client`** registers the poll schedule. It refuses unless *both*
-   connections are ACTIVE, returning `{ onboarded: false, gmailStatus,
-   sheetsStatus }` so you can see what's still pending — it's idempotent, so just
-   re-run it after approving. Once onboarded, the cron scheduler polls that inbox
-   and appends matches to the sheet in `TARGET_SHEET_ID`.
-
-Or drive it from the CLI (needs `TRIGGER_SECRET_KEY_DEV` in `.env` and a running
-`npm run dev` worker). These print the consent URL / onboard result directly:
+A client needs two Composio connections under the same `userId` (a stable
+identifier — their id in your system, or their email): **Gmail** (read their
+inbox) and **Google Sheets** (write matched emails). With `npm run dev` running:
 
 ```bash
-npm run connect -- gmail  <userId>   # → prints Gmail consent URL
-npm run connect -- sheets <userId>   # → prints Google Sheets consent URL
-npm run onboard -- <userId>          # after approving both; re-run until onboarded
+npm run connect -- gmail  <userId>   # → prints the Gmail consent URL; open + approve
+npm run connect -- sheets <userId>   # → same, for Google Sheets write access
+npm run onboard -- <userId>          # registers the poll schedule; re-run until onboarded
 ```
 
-The scheduler runs every minute by default — adjust the cron in
-`src/trigger/gmail-agent.ts` or from the dashboard.
+`onboard` refuses unless *both* connections are ACTIVE and reports which one is
+still pending — it's idempotent (a stable `deduplicationKey`), so re-running it
+updates the existing schedule in place. Optional: pass a cron
+(`npm run onboard -- <userId> "*/5 * * * *"`) to override the every-2-hours
+default; add `--prod` to any command to target production.
+
+The same tasks can be run from the Trigger.dev dashboard's Test panel instead —
+payload `{ "userId": "client-123" }`.
+
+### Other operations
+
+```bash
+npm run offboard   -- <userId>            # stop polling a client
+npm run reschedule -- [cron] [--dry-run]  # bulk-update every existing schedule's cron
+```
+
+`reschedule` exists because the cron lives server-side in each schedule:
+editing `DEFAULT_POLL_CRON` in `src/trigger/clients.ts` only affects *newly*
+onboarded clients until you reschedule (or re-onboard) the existing ones.
+
+## What a poll writes
+
+One row per matched email, appended below the sheet's existing data (add a
+header row by hand once):
+
+| date | from | subject | snippet | messageId | threadId | sentiment |
+
+`sentiment` is `happy`, `neutral`, or `angry`, classified by Azure OpenAI
+(`gpt-4.1` deployment). Any classification failure degrades to `neutral`
+rather than blocking the row.
 
 ## Deploying
 
-Set `TRIGGER_PROJECT_REF` and your `TRIGGER_SECRET_KEY_*` in `.env`, then:
-`npx trigger.dev@latest deploy`
+Set `TRIGGER_PROJECT_REF` and your `TRIGGER_SECRET_KEY_*` in `.env`, then
+`npm run deploy`. Remember env vars (`WATCH_SENDER`, `TARGET_SHEET_ID`,
+`COMPOSIO_API_KEY`, `AZURE_OPENAI_API_KEY`) are per-environment — set them in
+the Trigger.dev dashboard for the deployed environment.
 
 ## API keys
 

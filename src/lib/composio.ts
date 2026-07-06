@@ -86,8 +86,8 @@ export function ensureGoogleSheetsAuthConfig(): Promise<string> {
   });
 }
 
-export interface GmailConnectLink {
-  /** Composio-hosted URL to send the client to so they approve Gmail access. */
+export interface ConnectLink {
+  /** Composio-hosted URL to send the client to so they approve access. */
   redirectUrl?: string;
   /** The connected-account id; poll its status to know when it's ACTIVE. */
   connectionId: string;
@@ -102,7 +102,7 @@ export interface GmailConnectLink {
 async function startConnection(
   userId: string,
   authConfigId: string
-): Promise<GmailConnectLink> {
+): Promise<ConnectLink> {
   const composio = getComposio();
   const request = await composio.connectedAccounts.link(userId, authConfigId);
   return { redirectUrl: request.redirectUrl ?? undefined, connectionId: request.id };
@@ -111,14 +111,14 @@ async function startConnection(
 /** Begin linking a client's Gmail. */
 export async function startGmailConnection(
   userId: string
-): Promise<GmailConnectLink> {
+): Promise<ConnectLink> {
   return startConnection(userId, await ensureGmailAuthConfig());
 }
 
 /** Begin linking a client's Google Sheets (so the agent can write on their behalf). */
 export async function startGoogleSheetsConnection(
   userId: string
-): Promise<GmailConnectLink> {
+): Promise<ConnectLink> {
   return startConnection(userId, await ensureGoogleSheetsAuthConfig());
 }
 
@@ -128,7 +128,7 @@ export async function startGoogleSheetsConnection(
  * Note: Composio lets you filter connections *by* userId but doesn't enumerate
  * userIds back, so the source of truth for "which clients exist" is the set of
  * Trigger.dev schedules (one per user, tagged with externalId=userId; see
- * onboardClient in src/trigger/gmail-connect.ts). poll-inbox calls these to skip
+ * onboardClient in src/trigger/clients.ts). poll-inbox calls these to skip
  * anyone who hasn't finished (or has revoked) their connection.
  */
 async function getConnectionStatus(
@@ -153,23 +153,49 @@ export function getGoogleSheetsConnectionStatus(
   return getConnectionStatus(userId, GOOGLESHEETS_TOOLKIT);
 }
 
+/** One email, trimmed to the fields the agent actually cares about. */
+export interface EmailSummary {
+  from: string;
+  subject: string;
+  date: string;
+  snippet: string;
+  threadId?: string;
+  messageId?: string;
+}
+
 /**
- * Fetch recent emails for a client via Composio's Gmail tool. Returns the raw
- * tool response (message list + parsed bodies) — shape is owned by Composio.
+ * Pull the message array out of Composio's GMAIL_FETCH_EMAILS response and trim
+ * each one to a compact, log-friendly shape. The raw response is ~70KB *per
+ * email* (full MIME payload + base64 attachments), which blows past Trigger's
+ * log-attribute limit and gets truncated — so the raw blob never leaves this
+ * module.
  */
+function summarizeEmails(raw: unknown): EmailSummary[] {
+  const messages = (raw as any)?.data?.messages;
+  if (!Array.isArray(messages)) return [];
+  return messages.map((m: any) => ({
+    from: m.sender ?? "(unknown)",
+    subject: m.subject ?? "(no subject)",
+    date: m.messageTimestamp ?? "",
+    snippet: (m.preview?.body ?? m.messageText ?? "").toString().slice(0, 200),
+    threadId: m.threadId,
+    messageId: m.messageId,
+  }));
+}
+
+/** Fetch a client's most recent emails, trimmed to EmailSummary shape. */
 export async function fetchRecentEmails(
   userId: string,
-  opts: { query?: string; maxResults?: number } = {}
-): Promise<unknown> {
+  opts: { maxResults?: number } = {}
+): Promise<EmailSummary[]> {
   const composio = getComposio();
   const result = await composio.tools.execute("GMAIL_FETCH_EMAILS", {
     userId,
     arguments: {
-      query: opts.query,
       max_results: opts.maxResults ?? 10,
     },
   });
-  return result;
+  return summarizeEmails(result);
 }
 
 /**
@@ -203,23 +229,6 @@ export async function appendRowsToSheet(
       values: args.rows,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
-    },
-  });
-}
-
-/** Send an email as the client (used by the reply step of the agent). */
-export async function sendEmail(
-  userId: string,
-  args: { to: string; subject: string; body: string; threadId?: string }
-): Promise<unknown> {
-  const composio = getComposio();
-  return composio.tools.execute("GMAIL_SEND_EMAIL", {
-    userId,
-    arguments: {
-      recipient_email: args.to,
-      subject: args.subject,
-      body: args.body,
-      thread_id: args.threadId,
     },
   });
 }

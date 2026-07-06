@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "trigger.config.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "trigger.config.ts"]
 }

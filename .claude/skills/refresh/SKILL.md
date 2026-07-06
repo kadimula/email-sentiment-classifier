@@ -5,7 +5,7 @@ description: Onboard (or re-onboard) a client to the Gmail poll agent — trigge
 
 # /refresh — onboard / refresh a client's poll schedule
 
-Triggers the `onboard-client` task (defined in `src/trigger/gmail-connect.ts`). Because
+Triggers the `onboard-client` task (defined in `src/trigger/clients.ts`). Because
 that task calls `schedules.create` with a stable `deduplicationKey` of
 `poll-inbox:<userId>`, running it is **idempotent**: a first run creates the
 per-user `poll-inbox` schedule; a re-run **updates** the existing one in place —

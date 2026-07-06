@@ -1,18 +1,21 @@
 {
-  "name": "test-trigger",
+  "name": "common-business-automations",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "trigger dev",
     "deploy": "trigger deploy",
-    "connect": "node --env-file=.env --import tsx scripts/connect.ts",
-    "onboard": "node --env-file=.env --import tsx scripts/onboard.ts"
+    "typecheck": "tsc --noEmit",
+    "connect": "node --env-file=.env --import tsx scripts/cli.ts connect",
+    "onboard": "node --env-file=.env --import tsx scripts/cli.ts onboard",
+    "offboard": "node --env-file=.env --import tsx scripts/cli.ts offboard",
+    "reschedule": "node --env-file=.env --import tsx scripts/cli.ts reschedule"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
     "@composio/core": "^0.13.1",
-    "@trigger.dev/sdk": "4.5.0"
+    "@trigger.dev/sdk": "4.5.0",
+    "openai": "^6.45.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

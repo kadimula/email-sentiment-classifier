@@ -5,30 +5,22 @@ import {
   startGoogleSheetsConnection,
   getGoogleSheetsConnectionStatus,
 } from "../lib/composio";
-import { pollInbox } from "./gmail-agent";
+import { pollInbox } from "./poll-inbox";
 
 /**
- * Client lifecycle, entirely inside Trigger.dev + Composio — no web server, no
- * database. Composio hosts the OAuth consent page and callback; Trigger.dev
- * holds the "roster" as one imperative schedule per client (attached to
- * poll-inbox, tagged with externalId=userId).
- *
- * A fully onboarded client has TWO Composio connections under the same userId:
- * Gmail (to read the inbox) and Google Sheets (to write matches). They're
- * separate toolkits, so each needs its own consent — hence two connect steps.
- *
- * Onboarding flow (run each from the dashboard or SDK with a userId):
- *   1. connect-client-gmail   → returns the Composio consent URL; open + approve
+ * Client lifecycle tasks. A fully onboarded client has TWO Composio
+ * connections under the same userId — Gmail (read the inbox) and Google Sheets
+ * (write matches) — plus one imperative poll-inbox schedule tagged with
+ * externalId=userId. Run each from the dashboard, SDK, or scripts/cli.ts:
+ *   1. connect-client-gmail   → Composio consent URL; open + approve
  *   2. connect-client-sheets  → same, for Google Sheets write access
- *   3. onboard-client         → registers the poll schedule once both are ACTIVE;
- *                               idempotent, so just re-run it until it succeeds
- *                               (it reports gmailStatus/sheetsStatus when not yet
- *                               ready — no separate status-check task needed).
+ *   3. onboard-client         → registers the poll schedule once both are
+ *                               ACTIVE; idempotent — re-run until it succeeds
  *   offboard-client           → removes the schedule (stops polling)
  */
 
 /** Default poll cadence for a newly onboarded client; override via payload.cron. */
-const DEFAULT_POLL_CRON = "0 */2 * * *"; // every 2 hours
+export const DEFAULT_POLL_CRON = "0 */2 * * *"; // every 2 hours
 
 /** Start linking a client's Gmail. Returns the Composio-hosted consent URL. */
 export const connectClientGmail = task({
@@ -78,9 +70,9 @@ export const connectClientSheets = task({
 });
 
 /**
- * Register a client for recurring inbox polling. This is what "the roster" is
- * now: one Trigger.dev schedule per user, attached to poll-inbox and tagged
- * with externalId=userId so each firing knows whose inbox to read.
+ * Register a client for recurring inbox polling. This is what "the roster" is:
+ * one Trigger.dev schedule per user, attached to poll-inbox and tagged with
+ * externalId=userId so each firing knows whose inbox to read.
  */
 export const onboardClient = task({
   id: "onboard-client",
