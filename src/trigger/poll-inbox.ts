@@ -19,8 +19,6 @@ async function writeMatchesToSheet(
     e.from,
     e.subject,
     e.snippet,
-    e.messageId ?? "",
-    e.threadId ?? "",
     sentiments[i],
   ]);
   await appendRowsToSheet(userId, { spreadsheetId, rows });
@@ -34,31 +32,28 @@ async function writeMatchesToSheet(
 export const pollInbox = schedules.task({
   id: "poll-inbox",
   run: async (payload) => {
-    // Step 1: Resolve the client from the schedule's externalId.
     const userId = payload.externalId;
     if (!userId) {
       logger.error("poll-inbox fired without an externalId (userId) — skipping");
       return { skipped: true, reason: "no externalId" };
     }
 
-    // Step 2: Skip clients whose Gmail isn't linked/active.
     const status = await getGmailConnectionStatus(userId);
     if (status !== "ACTIVE") {
       logger.warn("Skipping — Gmail not active", { userId, status });
       return { userId, skipped: true, status };
     }
 
-    // Step 3: Read per-environment config from env vars.
     const watchSender = process.env.WATCH_SENDER?.trim();
     const targetSheetId = process.env.TARGET_SHEET_ID?.trim();
 
-    // Step 4: Fetch recent emails and filter by the watched sender.
+    // Fetch recent emails and filter by the watched sender.
     const all = await fetchRecentEmails(userId, { maxResults: 10 });
     const matched = watchSender
       ? all.filter((e) => e.from.toLowerCase().includes(watchSender.toLowerCase()))
       : all;
 
-    // Step 5: Log what we polled and matched.
+    // Log what we polled and matched.
     logger.info("Polled inbox", {
       userId,
       total: all.length,
@@ -69,7 +64,7 @@ export const pollInbox = schedules.task({
       logger.info(`✉️  ${e.subject}`, { from: e.from, date: e.date, snippet: e.snippet });
     }
 
-    // Step 6: Classify and append matches to the target sheet.
+    // Classify and append matches to the target sheet.
     let written = 0;
     if (!targetSheetId) {
       logger.warn("TARGET_SHEET_ID not set — matches won't be written to a sheet", { userId });
