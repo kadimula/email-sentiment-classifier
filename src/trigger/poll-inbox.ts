@@ -3,46 +3,62 @@ import {
   appendRowsToSheet,
   fetchRecentEmails,
   getGmailConnectionStatus,
+  type EmailSummary,
 } from "../lib/composio";
 import { classifySentiment, type Sentiment } from "../lib/sentiment";
 
-/**
- * Per-user Gmail poll. Imperative schedule: it has no `cron` of its own, so it
- * only fires for the schedules onboard-client attaches (one per client, with
- * `externalId` = their Composio userId). Config is Trigger.dev env vars:
- *   WATCH_SENDER     – substring/address to filter the "from" on (blank = all)
- *   TARGET_SHEET_ID  – Google Sheet matches are appended to
- */
+// Column order is the sheet's implicit schema — keep it stable.
+async function writeMatchesToSheet(
+  userId: string,
+  spreadsheetId: string,
+  matched: EmailSummary[],
+): Promise<number> {
+  const sentiments: Sentiment[] = await Promise.all(matched.map(classifySentiment));
+  const rows = matched.map((e, i) => [
+    e.date,
+    e.from,
+    e.subject,
+    e.snippet,
+    e.messageId ?? "",
+    e.threadId ?? "",
+    sentiments[i],
+  ]);
+  await appendRowsToSheet(userId, { spreadsheetId, rows });
+  logger.info("Wrote matches to sheet", { userId, targetSheetId: spreadsheetId, written: rows.length });
+  return rows.length;
+}
+
+// Per-user Gmail poll. Imperative schedule (no cron); onboard-client attaches one
+// per client with externalId = their Composio userId. Config via WATCH_SENDER and
+// TARGET_SHEET_ID env vars.
 export const pollInbox = schedules.task({
   id: "poll-inbox",
   run: async (payload) => {
+    // Step 1: Resolve the client from the schedule's externalId.
     const userId = payload.externalId;
     if (!userId) {
-      // Should never happen: onboard-client always sets externalId. A bare
-      // firing means someone attached a schedule without one.
       logger.error("poll-inbox fired without an externalId (userId) — skipping");
       return { skipped: true, reason: "no externalId" };
     }
 
-    // Skip anyone who hasn't finished linking (or has revoked) their Gmail.
+    // Step 2: Skip clients whose Gmail isn't linked/active.
     const status = await getGmailConnectionStatus(userId);
     if (status !== "ACTIVE") {
       logger.warn("Skipping — Gmail not active", { userId, status });
       return { userId, skipped: true, status };
     }
 
-    // Config lives in Trigger.dev env vars, not in code — set per environment
-    // from the dashboard so onboarding a client is data, not a redeploy.
+    // Step 3: Read per-environment config from env vars.
     const watchSender = process.env.WATCH_SENDER?.trim();
     const targetSheetId = process.env.TARGET_SHEET_ID?.trim();
 
+    // Step 4: Fetch recent emails and filter by the watched sender.
     const all = await fetchRecentEmails(userId, { maxResults: 10 });
-
-    // Keep only mail from the sender we're watching.
     const matched = watchSender
       ? all.filter((e) => e.from.toLowerCase().includes(watchSender.toLowerCase()))
       : all;
 
+    // Step 5: Log what we polled and matched.
     logger.info("Polled inbox", {
       userId,
       total: all.length,
@@ -53,32 +69,15 @@ export const pollInbox = schedules.task({
       logger.info(`✉️  ${e.subject}`, { from: e.from, date: e.date, snippet: e.snippet });
     }
 
-    // Write each matched email as a row in the target sheet. We append (never
-    // overwrite), so every poll adds new rows below the existing data. Column
-    // order here is the sheet's implicit schema — keep it stable, and add a
-    // matching header row to the sheet by hand once.
+    // Step 6: Classify and append matches to the target sheet.
     let written = 0;
     if (!targetSheetId) {
       logger.warn("TARGET_SHEET_ID not set — matches won't be written to a sheet", { userId });
     } else if (matched.length > 0) {
-      // One Claude call per matched email (max 10 per poll), run concurrently.
-      const sentiments: Sentiment[] = await Promise.all(
-        matched.map((e) => classifySentiment(e)),
-      );
-      const rows = matched.map((e, i) => [
-        e.date,
-        e.from,
-        e.subject,
-        e.snippet,
-        e.messageId ?? "",
-        e.threadId ?? "",
-        sentiments[i],
-      ]);
-      await appendRowsToSheet(userId, { spreadsheetId: targetSheetId, rows });
-      written = rows.length;
-      logger.info("Wrote matches to sheet", { userId, targetSheetId, written });
+      written = await writeMatchesToSheet(userId, targetSheetId, matched);
     }
 
+    // Step 7: Return a summary of the run.
     return {
       userId,
       total: all.length,
