@@ -9,8 +9,8 @@ import { logger } from "@trigger.dev/sdk";
 export const SENTIMENTS = ["happy", "neutral", "angry"] as const;
 export type Sentiment = (typeof SENTIMENTS)[number];
 
-// Override via ANTHROPIC_MODEL to trade cost for quality (e.g. claude-haiku-4-5).
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL?.trim() ?? "claude-opus-4-8";
+// Override via ANTHROPIC_MODEL to trade cost for quality (e.g. claude-opus-4-8).
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL?.trim() ?? "claude-haiku-4-5";
 
 // Lazy singleton (mirrors getComposio): constructing the client at module load
 // with a missing key would crash every task import in the bundle — not just
